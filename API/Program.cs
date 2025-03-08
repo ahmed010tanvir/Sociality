@@ -55,6 +55,8 @@ builder.Services.AddTransient<IAuthorizationHandler, IsHostRequirementHandler>()
 builder.Services.Configure<CloudinarySettings>(builder.Configuration
     .GetSection("CloudinarySettings"));
 
+
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
