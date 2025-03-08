@@ -19,18 +19,58 @@ var builder = WebApplication.CreateBuilder(args);
 // Add services to the container.
 builder.Services.AddControllers(opt => 
 {
-    var policy = new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build();
+    var policy = new AuthorizationPolicyBuilder()
+        .RequireAuthenticatedUser()
+        .Build();
     opt.Filters.Add(new AuthorizeFilter(policy));
 });
-builder.Services.AddDbContext<AppDbContext>(opt =>
+
+// Fixed DbContext configuration to use single context for both app and identity
+builder.Services.AddDbContext<AppDbContext>(options =>
 {
-    opt.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection"));
+    var env = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT");
+    string connStr;
+
+    if (env == "Development")
+    {
+          var devConnStr = builder.Configuration.GetConnectionString("DefaultConnection");
+    if (devConnStr == null)
+    {
+        throw new InvalidOperationException(
+            "Connection string 'DefaultConnection' not found in Development configuration");
+    }
+    connStr = devConnStr;
+    }
+    else
+    {
+        var connUrl = Environment.GetEnvironmentVariable("DATABASE_URL");
+        connUrl = connUrl?.Replace("postgres://", string.Empty);
+        
+        if (connUrl == null)
+            throw new ArgumentNullException("DATABASE_URL environment variable not set");
+
+        var pgUserPass = connUrl.Split("@")[0];
+        var pgHostPortDb = connUrl.Split("@")[1];
+        var pgHostPort = pgHostPortDb.Split("/")[0];
+        var pgDb = pgHostPortDb.Split("/")[1];
+        var pgUser = pgUserPass.Split(":")[0];
+        var pgPass = pgUserPass.Split(":")[1];
+        var pgHost = pgHostPort.Split(":")[0];
+        var pgPort = pgHostPort.Split(":")[1];
+        var updatedHost = pgHost.Replace("flycast", "internal");
+
+        connStr = $"Server={updatedHost};Port={pgPort};User Id={pgUser};Password={pgPass};Database={pgDb};";
+    }
+
+    options.UseNpgsql(connStr);
 });
+
 builder.Services.AddCors();
 builder.Services.AddSignalR();
-builder.Services.AddMediatR(x => {
-    x.RegisterServicesFromAssemblyContaining<GetActivityList.Handler>();
-    x.AddOpenBehavior(typeof(ValidationBehavior<,>));
+builder.Services.AddMediatR(cfg => 
+{
+    cfg.RegisterServicesFromAssemblyContaining<GetActivityList.Handler>();
+    cfg.AddOpenBehavior(typeof(ValidationBehavior<,>));
 });
 
 builder.Services.AddScoped<IUserAccessor, UserAccessor>();
@@ -38,54 +78,63 @@ builder.Services.AddScoped<IPhotoService, PhotoService>();
 builder.Services.AddAutoMapper(typeof(MappingProfiles).Assembly);
 builder.Services.AddValidatorsFromAssemblyContaining<CreateActivityValidator>();
 builder.Services.AddTransient<ExceptionMiddleware>();
-builder.Services.AddIdentityApiEndpoints<User>(opt => 
+
+// Fixed Identity configuration to use AppDbContext
+builder.Services.AddIdentityApiEndpoints<User>(options => 
 {
-    opt.User.RequireUniqueEmail = true;
+    options.User.RequireUniqueEmail = true;
 })
 .AddRoles<IdentityRole>()
 .AddEntityFrameworkStores<AppDbContext>();
-builder.Services.AddAuthorization(opt =>
+
+builder.Services.AddAuthorization(options =>
 {
-    opt.AddPolicy("IsActivityHost", policy => 
+    options.AddPolicy("IsActivityHost", policy => 
     {
         policy.Requirements.Add(new IsHostRequirement());
     });
 });
+
 builder.Services.AddTransient<IAuthorizationHandler, IsHostRequirementHandler>();
-builder.Services.Configure<CloudinarySettings>(builder.Configuration
-    .GetSection("CloudinarySettings"));
-
-
+builder.Services.Configure<CloudinarySettings>(builder.Configuration.GetSection("CloudinarySettings"));
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
 app.UseMiddleware<ExceptionMiddleware>();
-app.UseCors(x => x.AllowAnyHeader().AllowAnyMethod()
-    .AllowCredentials()
-    .WithOrigins("http://localhost:3000", "https://localhost:3000"));
+
+// Updated CORS configuration with proper policy
+app.UseCors(policy => 
+{
+    policy
+        .AllowAnyHeader()
+        .AllowAnyMethod()
+        .AllowCredentials()
+        .WithOrigins(builder.Configuration["ClientUrl"] ?? "http://localhost:3000");
+});
 
 app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
-app.MapGroup("api").MapIdentityApi<User>(); // api/login
+app.MapGroup("api").MapIdentityApi<User>();
 app.MapHub<CommentHub>("/comments");
 
-using var scope = app.Services.CreateScope();
-var services = scope.ServiceProvider;
-
-try
+// Database migration and seeding
+using (var scope = app.Services.CreateScope())
 {
-    var context = services.GetRequiredService<AppDbContext>();
-    var userManager = services.GetRequiredService<UserManager<User>>();
-    await context.Database.MigrateAsync();
-    await DbInitializer.SeedData(context, userManager);
-}
-catch (Exception ex)
-{
-    var logger = services.GetRequiredService<ILogger<Program>>();
-    logger.LogError(ex, "An error occurred during migration.");
+    var services = scope.ServiceProvider;
+    try
+    {
+        var context = services.GetRequiredService<AppDbContext>();
+        var userManager = services.GetRequiredService<UserManager<User>>();
+        await context.Database.MigrateAsync();
+        await DbInitializer.SeedData(context, userManager);
+    }
+    catch (Exception ex)
+    {
+        var logger = services.GetRequiredService<ILogger<Program>>();
+        logger.LogError(ex, "An error occurred during migration or seeding");
+    }
 }
 
 app.Run();

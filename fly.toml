@@ -1,13 +1,17 @@
-# fly.toml app configuration file generated for reactivities-old-feather-2124 on 2025-03-08T19:51:44+06:00
+# fly.toml app configuration file generated for reactivities-snowy-breeze-6652 on 2025-03-08T21:21:38+06:00
 #
 # See https://fly.io/docs/reference/configuration/ for information about how to use this file.
 #
 
-app = 'reactivities-old-feather-2124'
+app = 'reactivities0007'
 primary_region = 'sin'
 
 [build]
   image = 'gin0007/reactivities:latest'
+
+[env]
+  ASPNETCORE_URLS="https://+:8080"
+
 
 [http_service]
   internal_port = 8080
