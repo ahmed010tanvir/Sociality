@@ -11,7 +11,7 @@ primary_region = "sin"
 [env]
   ASPNETCORE_URLS = "https://+:8080"
   DOTNET_RUNNING_IN_CONTAINER = "true"
-  DATABASE_URL = "postgresql://user:password@db-host:5432/dbname"  # Replace with actual Railway DB connection
+  DATABASE_URL = "postgresql://postgres:DnDtwoFCyybsQtimienNntgNQpQEvQHY@maglev.proxy.rlwy.net:59887/railway"
 
 [http_service]
   internal_port = 8080
