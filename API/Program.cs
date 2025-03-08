@@ -16,6 +16,17 @@ using Persistence;
 
 var builder = WebApplication.CreateBuilder(args);
 
+
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+builder.Services.AddDbContext<AppDbContext>(options =>
+    options.UseNpgsql(connectionString, npgsqlOptions =>
+    {
+        npgsqlOptions.EnableRetryOnFailure(
+            maxRetryCount: 5,
+            maxRetryDelay: TimeSpan.FromSeconds(15),
+            errorCodesToAdd: null);
+        npgsqlOptions.CommandTimeout(120);
+    }));
 // Add services to the container.
 builder.Services.AddControllers(opt => 
 {

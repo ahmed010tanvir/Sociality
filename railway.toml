@@ -1,7 +1,3 @@
-# fly.toml app configuration file generated for reactivities-snowy-breeze-6652 on 2025-03-08T21:21:38+06:00
-#
-# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
-#
 
 app = 'reactivities0007'
 primary_region = 'sin'
@@ -25,3 +21,7 @@ primary_region = 'sin'
   memory = '1gb'
   cpu_kind = 'shared'
   cpus = 1
+
+[mounts]
+source = "pg_data"
+destination = "/var/lib/postgresql/data"
